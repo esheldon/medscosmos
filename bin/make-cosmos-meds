@@ -1,0 +1,26 @@
+#!/usr/bin/env python
+
+import medscosmos
+import argparse
+
+parser=argparse.ArgumentParser()
+parser.add_argument('config_path')
+parser.add_argument('cat_path')
+parser.add_argument('flist_path')
+parser.add_argument('meds_file')
+
+def main():
+    args=parser.parse_args()
+
+
+    maker = medscosmos.CosmosMEDSMaker(
+        args.config_path,
+        args.cat_path,
+        args.flist_path,
+    )
+    
+    maker.write(args.meds_file)
+
+if __name__=='__main__':
+    main()
+ 
