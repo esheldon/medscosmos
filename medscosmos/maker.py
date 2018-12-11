@@ -3,6 +3,8 @@ import meds
 import esutil as eu
 import fitsio
 
+from . import hst_psfs
+
 FWHM_FAC = 2*np.sqrt(2*np.log(2))
 
 class CosmosMEDSMaker(meds.MEDSMaker):
@@ -46,6 +48,16 @@ class CosmosMEDSMaker(meds.MEDSMaker):
 
             w_in_bnds = coadd_q[w_in_bnds]
             self.obj_data = self.obj_data[w_in_bnds]
+
+        # we will want something else for DES data
+        self.psfs = hst_psfs.HSTPSF(
+            cat=self.obj_data,
+            maxrad=0.2,
+            #maxrad=2.0/3600.0,
+            nside=64,
+        )
+        self.psfs.doplot()
+        stop
 
         # box sizes are even
         half_box_size = self.obj_data['box_size']//2
