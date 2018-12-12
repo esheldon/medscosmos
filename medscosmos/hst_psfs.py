@@ -15,7 +15,8 @@ class HSTPSF(object):
         gs_index = self.cat['gscosmos_index'][index]
         fname = os.path.join(
             self.psf_dir,
-            str(self.gscat[gs_index]['psf_filename'],'utf-8').strip(),
+            #str(self.gscat[gs_index]['psf_filename'],'utf-8').strip(),
+            self.gscat[gs_index]['psf_filename'],
         )
         return fitsio.read(fname)
 

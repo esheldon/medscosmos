@@ -111,7 +111,9 @@ class CosmosMEDSMaker(meds.MEDSMaker):
             self.obj_data['ncutout'][q] += 1
 
         self.obj_data = self._make_resized_data(self.obj_data)
-        #self.obj_data = self.obj_data[0:10]
+        print('setting number field as sequential')
+        self.obj_data['number'] = 1+np.arange(self.obj_data.size)
+
         self._set_start_rows_and_pixel_count()
 
         self._set_psf_layout_hst()
@@ -292,27 +294,6 @@ class CosmosMEDSMaker(meds.MEDSMaker):
 
 
     def _read_catalog(self, catname):
-        """
-        cols=[
-            'number',
-            'flags',
-            'alpha_j2000',
-            'delta_j2000',
-            'x_image',
-            'y_image',
-            'isoarea_image',
-            'flux_auto',
-            'fluxerr_auto',
-            'flux_radius',
-
-            # only used for cuts
-            'mu_class',
-            'mask',
-        ]
-        with fitsio.FITS(catname,lower=True) as fits:
-            #cat = fits[1][cols][100000:110000]
-            cat = fits[1].read(columns=cols)
-        """
         print('loading catalog:',catname)
         with fitsio.FITS(catname,lower=True) as fits:
             #cat = fits[1][100000:110000]
@@ -347,7 +328,7 @@ class CosmosMEDSMaker(meds.MEDSMaker):
         obj_data['box_size'] = self._get_box_sizes(cat)
 
         obj_data['id']       = cat[ self['id_name'] ]
-        obj_data['number']   = cat['number']
+        #obj_data['number']   = cat['number']
         obj_data['flags']    = cat[ self['flags_name'] ]
         obj_data['ra']       = cat[ self['ra_name'] ]
         obj_data['dec']      = cat[ self['dec_name'] ]
@@ -507,7 +488,8 @@ class CosmosMEDSMaker(meds.MEDSMaker):
         except:
             ext_len=None
 
-        image_info = meds.util.get_image_info_struct(
+        #image_info = meds.util.get_image_info_struct(
+        image_info = get_image_info_struct(
             nimage,
             path_len,
             ext_len=ext_len,
@@ -522,5 +504,104 @@ class CosmosMEDSMaker(meds.MEDSMaker):
             image_info['weight_path'] = f.replace('sci.fits','wht.fits')
 
         return image_info
+
+def get_image_info_struct(nimage, path_len,
+                          image_id_len=None,
+                          wcs_len=None,
+                          ext_len=None,
+                          extra_dtype=None):
+    """
+    get the image info structure
+
+    Set default scale to 1.0. The other fields are 0 for
+    numbers, or blank for strings
+
+    parameters
+    ----------
+    nimage: int
+        number of images in array
+    path_len: int
+        length of path strings
+    wcs_len: int, optional
+        length of wcs strings. If not sent, wcs will not
+        be present in the array
+    ext_len: int, optional
+        If sent, the extension is assumed to be a string
+        instead of an integer, and this is the length
+    """
+    dt = get_image_info_dtype(
+        path_len,
+        image_id_len=image_id_len,
+        wcs_len=wcs_len,
+        ext_len=ext_len,
+        extra_dtype=extra_dtype,
+    )
+
+    data = np.zeros(nimage, dtype=dt)
+
+    data['scale'] = 1.0
+
+    return data
+
+IMAGE_INFO_TYPES = ['image','weight','seg','bmask','bkg']
+def get_image_info_dtype(path_len,
+                         image_id_len=None,
+                         wcs_len=None,
+                         ext_len=None,
+                         extra_dtype=None):
+    """
+    get the image_info dtype for the specified path string
+    length and wcs string length
+
+    parameters
+    ----------
+    path_len: int
+        length of path strings
+    wcs_len: int, optional
+        length of wcs strings. If not sent, wcs will not
+        be present in data type
+    ext_len: int, optional
+        If sent, the extension is assumed to be a string
+        instead of an integer, and this is the length
+    """
+
+    path_fmt = 'U%d' % path_len
+
+    if image_id_len is None:
+        image_id_descr = 'i8'
+    else:
+        image_id_descr = 'U%d' % image_id_len
+
+    if ext_len is not None:
+        ext_descr = 'U%d' % ext_len
+    else:
+        ext_descr = 'i2'
+    dt=[]
+    for ctype in IMAGE_INFO_TYPES:
+        path_name = '%s_path' % ctype
+        ext_name  = '%s_ext' % ctype
+
+        dt += [
+            (path_name, path_fmt),
+            (ext_name,ext_descr),
+        ]
+
+    dt += [
+        ('image_id', image_id_descr),
+        ('image_flags', 'i8'),
+        ('magzp', 'f4'),
+        ('scale', 'f4'),
+        ('position_offset','f8'),
+    ]
+    if wcs_len is not None:
+        wcs_fmt = 'U%d' % wcs_len
+        dt += [
+            ('wcs',wcs_fmt),
+        ]
+
+    if extra_dtype is not None:
+        dt += extra_dtype
+
+    return dt
 
 
