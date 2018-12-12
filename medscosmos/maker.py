@@ -111,7 +111,7 @@ class CosmosMEDSMaker(meds.MEDSMaker):
             self.obj_data['ncutout'][q] += 1
 
         self.obj_data = self._make_resized_data(self.obj_data)
-        self.obj_data = self.obj_data[0:10]
+        #self.obj_data = self.obj_data[0:10]
         self._set_start_rows_and_pixel_count()
 
         self._set_psf_layout_hst()
