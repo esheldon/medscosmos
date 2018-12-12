@@ -1,0 +1,64 @@
+#!/usr/bin/env python
+
+import medscosmos
+import argparse
+import fitsio
+
+parser=argparse.ArgumentParser()
+parser.add_argument('cat_path')
+parser.add_argument('output_path')
+parser.add_argument('plot_path')
+
+parser.add_argument('--maxrad',default=0.2,help='max match radius in degrees')
+parser.add_argument('--show',action='store_true')
+
+
+def read_cat(fname):
+    cols=[
+        'number',
+        'flags',
+        'alpha_j2000',
+        'delta_j2000',
+        'x_image',
+        'y_image',
+        'isoarea_image',
+        'flux_auto',
+        'fluxerr_auto',
+        'flux_radius',
+
+        # only used for cuts
+        'mu_class',
+        'mask',
+    ]
+
+    print('reading:',fname)
+    return fitsio.read(
+        fname,
+        #rows=list(range(10000)),
+        columns=cols,
+        lower=True,
+    )
+
+def main():
+    args=parser.parse_args()
+
+    cat = read_cat(args.cat_path)
+
+    matcher = medscosmos.hst_psfs.HSTPSFMatcher(
+        cat,
+        args.maxrad,
+    )
+    matcher.match_catalogs()
+
+    plt=matcher.doplot(show=args.show)
+    print('writing plot:',args.plot_path)
+    plt.write(args.plot_path, dpi=300)
+
+    newcat = matcher.get_catalog_with_matches()
+    
+    print('writing:',args.output_path)
+    fitsio.write(args.output_path, newcat, clobber=True)
+
+if __name__=='__main__':
+    main()
+ 
