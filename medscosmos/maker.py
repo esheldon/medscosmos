@@ -1,9 +1,25 @@
+"""
+TODO:
+
+    - make MEDS box size stuff pre-calculated in arcsec,
+      with typical DES psf taken into account (e.g. FWHM=1.2)
+    - limit to 1024 postage stamp (min 32)
+    - just make stamp sizes even, don't pick particular ones
+"""
+import os
 import numpy as np
 import meds
 import esutil as eu
 import fitsio
 
 from . import hst_psfs
+
+from . import files
+from .files import (
+    TempFile,
+    StagedOutFile,
+)
+
 
 FWHM_FAC = 2*np.sqrt(2*np.log(2))
 
@@ -16,12 +32,32 @@ class CosmosMEDSMaker(meds.MEDSMaker):
         image_info = self._make_image_info(flistname)
         obj_data = self._make_obj_data(catname, image_info)
 
+        self._setup_fpack()
+
         super(CosmosMEDSMaker,self).__init__(
             obj_data,
             image_info,
             config=config,
             **kw
         )
+
+    def write(self, filename):
+        """
+        write compressed meds file
+
+        Parameters
+        ----------
+        filename: string
+            Must end in .fz
+        """
+        assert filename[-3:]=='.fz','name must end in .fz'
+
+        ucfilename = filename[0:-3]
+
+        with TempFile(ucfilename) as tfile:
+            super(CosmosMEDSMaker,self).write(tfile.path)
+            self._compress_meds_file(tfile.path, filename)
+
 
     def _get_full_obj_data(self, obj_data):
         return obj_data
@@ -429,11 +465,20 @@ class CosmosMEDSMaker(meds.MEDSMaker):
         box_size = self._get_sigma_size(cat)
 
         # clip to range
-        box_size = box_size.clip(
+        box_size.clip(
             min=self['min_box_size'],
             max=self['max_box_size'],
+            out=box_size,
         )
+        box_size = box_size.astype('i4')
 
+        w,=np.where( ( (box_size % 2) != 0 ) )
+        if w.size > 0:
+            box_size[w] += 1
+
+        return box_size
+    
+    """
         # now put in fft sizes
         bins = [0]
 
@@ -448,7 +493,7 @@ class CosmosMEDSMaker(meds.MEDSMaker):
         bins = np.array(bins)
 
         return bins[bin_inds]
-
+    """
 
     def _get_sigma_size(self, cat):
         """
@@ -504,6 +549,43 @@ class CosmosMEDSMaker(meds.MEDSMaker):
             image_info['weight_path'] = f.replace('sci.fits','wht.fits')
 
         return image_info
+
+    def _setup_fpack(self):
+        # -qz 4.0 instead of -q 4.0
+        # this means preserve zero pixels
+        self['fpack_command'] = \
+            'fpack -qz 4.0 -t %d,%d {fname}' % tuple(self['fpack_dims'])
+
+    def _compress_meds_file(self, ucfilename, fzfilename):
+        """
+        run fpack on the file
+
+        parameters
+        ----------
+        ucfilename: string
+            filename for the uncompressed file
+        fzfilename: string
+            filename for the compressed file
+        """
+        from os.path import basename
+
+        tup=(basename(ucfilename),basename(fzfilename))
+        print('compressing file: %s -> %s' % tup)
+        tpath=files.expandpath(fzfilename)
+        if os.path.exists(tpath):
+            os.remove(tpath)
+
+        tmpdir = os.path.dirname(ucfilename)
+        with StagedOutFile(fzfilename,tmpdir=tmpdir) as sf:
+            cmd = self['fpack_command']
+            cmd = cmd.format(fname=ucfilename)
+            ret=os.system(cmd)
+
+            if ret != 0:
+                raise RuntimeError("failed to compress file")
+
+        print('output is in:',fzfilename)
+
 
 def get_image_info_struct(nimage, path_len,
                           image_id_len=None,
