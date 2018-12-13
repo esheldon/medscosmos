@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 
+import numpy as np
 import medscosmos
 import argparse
 import fitsio
+import esutil as eu
 
 parser=argparse.ArgumentParser()
 parser.add_argument('cat_path')
@@ -32,12 +34,17 @@ def read_cat(fname):
     ]
 
     print('reading:',fname)
-    return fitsio.read(
+    data = fitsio.read(
         fname,
         #rows=list(range(10000)),
         columns=cols,
         lower=True,
     )
+
+    add_dt = [('id','i8')]
+    new_data = eu.numpy_util.add_fields(data, add_dt)
+    new_data['id'] = np.arange(new_data.size)
+    return new_data
 
 def main():
     args=parser.parse_args()
@@ -50,14 +57,14 @@ def main():
     )
     matcher.match_catalogs()
 
-    plt=matcher.doplot(show=args.show)
-    print('writing plot:',args.plot_path)
-    plt.write(args.plot_path, dpi=300)
-
     newcat = matcher.get_catalog_with_matches()
     
     print('writing:',args.output_path)
     fitsio.write(args.output_path, newcat, clobber=True)
+
+    plt=matcher.doplot(show=args.show)
+    print('writing plot:',args.plot_path)
+    plt.write(args.plot_path, dpi=300)
 
 if __name__=='__main__':
     main()
