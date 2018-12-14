@@ -1,6 +1,10 @@
 """
 TODO:
 
+    - zero points
+        cosmos is 25.93647860706682
+        Note we will need to convert our flux_auto (for guesses) to the new
+        zero point if we rescale
     - move cuts into catmaker
     - use clean not clean only and apply cuts eric sent
     clean_withblends = (cosmos[‘unique’] == 1) & (cosmos[‘nearstar’] == 1) & (cosmos[‘masked’]==1)
