@@ -55,7 +55,7 @@ class HSTPSFMatcher(object):
     def match_catalogs(self):
         import smatch
 
-        print('matching')
+        print('matching psfs')
 
         # why does order matter?  We get proper matching when
         # putting the smaller catalog first
@@ -63,8 +63,8 @@ class HSTPSFMatcher(object):
             self.gscat['ra'],
             self.gscat['dec'],
             self.maxrad,
-            self.cat['alpha_j2000'], 
-            self.cat['delta_j2000'], 
+            self.cat['ra'], 
+            self.cat['dec'], 
             #self.cat['ra'], 
             #self.cat['dec'], 
             nside=1024,
@@ -97,8 +97,8 @@ class HSTPSFMatcher(object):
         )
 
         biggles.plot(
-            self.cat['alpha_j2000'], 
-            self.cat['delta_j2000'], 
+            self.cat['ra'], 
+            self.cat['dec'], 
             color='blue',
             type='dot',
             plt=plt,
@@ -106,8 +106,8 @@ class HSTPSFMatcher(object):
         )
 
         biggles.plot(
-            self.cat['alpha_j2000'], 
-            self.cat['delta_j2000'], 
+            self.cat['ra'], 
+            self.cat['dec'], 
             color='red',
             type='dot',
             plt=plt,

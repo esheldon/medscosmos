@@ -1,10 +1,19 @@
 """
 TODO:
 
-    - make MEDS box size stuff pre-calculated in arcsec,
-      with typical DES psf taken into account (e.g. FWHM=1.2)
+    - move cuts into catmaker
+    - use clean not clean only and apply cuts eric sent
+    clean_withblends = (cosmos[‘unique’] == 1) & (cosmos[‘nearstar’] == 1) & (cosmos[‘masked’]==1)
+    - put in iso_radius
+    - make MEDS box size stuff pre-calculated in arcsec
+    - we hope the min box size will make this OK for the DES data too
+    - force to common zero point
     - limit to 1024 postage stamp (min 32)
     - just make stamp sizes even, don't pick particular ones
+
+    - implement fake seg map?
+        - just a circle outside of iso_radius
+
 """
 import os
 import numpy as np
@@ -21,7 +30,6 @@ from .files import (
 )
 
 
-FWHM_FAC = 2*np.sqrt(2*np.log(2))
 
 class CosmosMEDSMaker(meds.MEDSMaker):
     def __init__(self, config_path, catname, flistname, **kw):
@@ -30,9 +38,14 @@ class CosmosMEDSMaker(meds.MEDSMaker):
         self.update(config)
 
         image_info = self._make_image_info(flistname)
-        obj_data = self._make_obj_data(catname, image_info)
+        
+        self.cat_orig = self._read_catalog(catname)
+        obj_data = self._make_obj_data(image_info)
 
         self._setup_fpack()
+
+        if hasattr(self,'psfex_objects'):
+            kw['psf_data'] = self.psfex_objects
 
         super(CosmosMEDSMaker,self).__init__(
             obj_data,
@@ -85,8 +98,7 @@ class CosmosMEDSMaker(meds.MEDSMaker):
             w_in_bnds = coadd_q[w_in_bnds]
             self.obj_data = self.obj_data[w_in_bnds]
 
-        # we will want something else for DES data
-        self.psf_data = hst_psfs.HSTPSF(cat=self.obj_data)
+        self._do_psf_setup()
 
         # box sizes are even
         half_box_size = self.obj_data['box_size']//2
@@ -101,10 +113,11 @@ class CosmosMEDSMaker(meds.MEDSMaker):
             print('    second cut: %6d of %6d objects' % (len(q_rc),len(q)))
 
             # now make sure everything is there
-            if file_id == 0 and len(self.obj_data['ra']) != len(q_rc):
-                raise MEDSCreationError('Not all objects were found in first image for '
-                                        'MEDS making (which is the coadd/detection '
-                                        'image by convention).')
+            if self['check_in_first_image']:
+                if file_id == 0 and len(self.obj_data['ra']) != len(q_rc):
+                    raise MEDSCreationError('Not all objects were found in first image for '
+                                            'MEDS making (which is the coadd/detection '
+                                            'image by convention).')
             # compose them
             q = q[q_rc]
 
@@ -152,8 +165,24 @@ class CosmosMEDSMaker(meds.MEDSMaker):
 
         self._set_start_rows_and_pixel_count()
 
-        self._set_psf_layout_hst()
+        if self['survey']=='cosmos':
+            self._set_psf_layout_hst()
+        else:
+            self._set_psf_layout_psfex()
 
+
+    def _do_psf_setup(self):
+        if self['survey']=='cosmos':
+            self.psf_data = hst_psfs.HSTPSF(cat=self.obj_data)
+
+    def _set_psfex_objects(self, image_info):
+        import psfex
+        self.psfex_objects=[]
+        for psfex_file in image_info['psfex_path']:
+            print('loading:',psfex_file)
+            p = psfex.PSFEx(psfex_file)
+            self.psfex_objects.append(p)
+ 
     def _write_psf_cutouts(self):
         self._write_psf_cutouts_hst()
 
@@ -178,11 +207,26 @@ class CosmosMEDSMaker(meds.MEDSMaker):
                 if (iobj+1) % 100 == 0:
                     print('    %d/%d' % (iobj+1,obj_data.size))
 
-                psf_im = self.psf_data.get_psf(iobj)
+                # HST psf is same for every cutout, in fact ncut should always
+                # be 1
+                try:
+                    psf_im = self.psf_data.get_psf(iobj)
+                except AttributeError:
+                    psf_im = None
 
                 ncut=obj_data['ncutout'][iobj]
 
                 for icut in range(ncut):
+
+                    if psf_im is None:
+                        row = obj_data['orig_row'][iobj, icut]
+                        col = obj_data['orig_col'][iobj, icut]
+                        file_id = obj_data['file_id'][iobj,icut]
+
+                        p = self.psf_data[file_id]
+
+                        psf_im = p.get_rec(row,col)
+
                     expected_psf_shape = (
                         obj_data['psf_row_size'][iobj,icut],
                         obj_data['psf_col_size'][iobj,icut],
@@ -244,9 +288,8 @@ class CosmosMEDSMaker(meds.MEDSMaker):
         """
         set the box sizes and start row for each psf image
         """
-        if self.psf_data is None:
-            raise ValueError("_set_psf_layout called "
-                             "with no psf data set")
+
+        print('setting psf layout for PSFEx')
 
         obj_data=self.obj_data
         psf_data=self.psf_data
@@ -256,7 +299,6 @@ class CosmosMEDSMaker(meds.MEDSMaker):
         #psf_npix = psf_size*psf_size
 
         psf_start_row = 0
-        psf_shape=None
         for iobj in range(obj_data.size):
             for icut in range(obj_data['ncutout'][iobj]):
 
@@ -268,25 +310,14 @@ class CosmosMEDSMaker(meds.MEDSMaker):
 
                 pim = p.get_rec(row,col)
                 cen = p.get_center(row,col)
-                try:
-                    sigma = p.get_sigma(row,col)
-                except:
-                    sigma = p.get_sigma()
 
-                if psf_shape is None:
-                    psf_shape = pim.shape
-                    psf_npix = psf_shape[0]**2
-                    obj_data['psf_box_size'] = psf_shape[0]
-                else:
-                    tpsf_shape = pim.shape
-                    if tpsf_shape != psf_shape:
-                        raise ValueError("currently all psfs "
-                                         "must be same size")
+                psf_shape = pim.shape
+                psf_npix = pim.size
 
-
+                obj_data['psf_row_size'][iobj,icut] = psf_shape[0]
+                obj_data['psf_col_size'][iobj,icut] = psf_shape[1]
                 obj_data['psf_cutout_row'][iobj,icut] = cen[0]
                 obj_data['psf_cutout_col'][iobj,icut] = cen[1]
-                obj_data['psf_sigma'][iobj,icut] = sigma
                 obj_data['psf_start_row'][iobj,icut] = psf_start_row
 
                 psf_start_row += psf_npix
@@ -330,10 +361,18 @@ class CosmosMEDSMaker(meds.MEDSMaker):
 
 
     def _read_catalog(self, catname):
+        """
+        read the cosmos catalog
+        """
         print('loading catalog:',catname)
         with fitsio.FITS(catname,lower=True) as fits:
             #cat = fits[1][100000:110000]
-            cat = fits[1][:]
+            if 'object_data' in fits:
+                print('reading from MEDS object data')
+                ext='object_data'
+            else:
+                ext=1
+            cat = fits[ext][:]
 
         w, = np.where(
             (cat['mu_class'] < 3)
@@ -347,34 +386,69 @@ class CosmosMEDSMaker(meds.MEDSMaker):
         cat = cat[w]
         return cat
 
-    def _make_obj_data(self, catname, image_info):
+    def _add_cat_fields(self, odata, copy=True):
+        """
+        add fields from the cat
 
-        cat = self._read_catalog(catname)
+        some will not be in the odata but some will. When copy is True We will
+        copy over the ones that are in both, in some cases
+        """
+        # these are required fileds from get_meds_output_dtype
+        # that we have put into the input catalog
+        always_copy=[
+            'id',
+            'ra',
+            'dec',
+        ]
+        cat = self.cat_orig
+
+        add_dt = []
+        for d in cat.dtype.descr:
+            n = d[0]
+            if n not in odata.dtype.names:
+                add_dt.append(d)
+
+        obj_data = eu.numpy_util.add_fields(
+            odata,
+            add_dt,
+        )
+
+        if copy:
+            for n in always_copy:
+                obj_data[n] = cat[n]
+
+            for d in add_dt:
+                n = d[0]
+                if n in always_copy:
+                    continue
+
+                # don't clobber things that should be left at
+                # their default values
+                if n not in odata.dtype.names:
+                    obj_data[n] = cat[n]
+
+
+        return obj_data
+
+    def _make_obj_data(self, image_info):
+
+        cat = self.cat_orig
 
         #ncutout_max=2
         ncutout_max = image_info.size
         if ncutout_max < 2:
             ncutout_max=2
+
         obj_data = meds.util.get_meds_output_struct(
             cat.size,
             ncutout_max,
             extra_fields=self._get_fields(ncutout_max),
         )
+        obj_data = self._add_cat_fields(obj_data)
 
-        obj_data['box_size'] = self._get_box_sizes(cat)
+        # convert box size in arcsec to pixels
+        obj_data['box_size'] = self._get_box_sizes(image_info, cat)
 
-        obj_data['id']       = cat[ self['id_name'] ]
-        #obj_data['number']   = cat['number']
-        obj_data['flags']    = cat[ self['flags_name'] ]
-        obj_data['ra']       = cat[ self['ra_name'] ]
-        obj_data['dec']      = cat[ self['dec_name'] ]
-        obj_data['flux']     = cat[ self['flux_name'] ]
-        obj_data['flux_err'] = cat[ self['fluxerr_name'] ]
-
-        obj_data['gscosmos_index'] = cat['gscosmos_index']
-        obj_data['gscosmos_sep_arcsec'] = cat['gscosmos_sep_arcsec']
-
-        obj_data['iso_radius']  = self._get_iso_radius(cat)
 
         pos=meds.util.make_wcs_positions(
             cat[ self['row_name'] ],
@@ -385,6 +459,21 @@ class CosmosMEDSMaker(meds.MEDSMaker):
         obj_data['input_col'] = pos['zcol']
 
         return obj_data
+
+    """
+        obj_data['id']       = cat[ self['id_name'] ]
+        obj_data['number']   = cat['number']
+        obj_data['flags']    = cat[ self['flags_name'] ]
+        obj_data['ra']       = cat[ self['ra_name'] ]
+        obj_data['dec']      = cat[ self['dec_name'] ]
+        obj_data['flux']     = cat[ self['flux_name'] ]
+        obj_data['flux_err'] = cat[ self['fluxerr_name'] ]
+
+        obj_data['gscosmos_index'] = cat['gscosmos_index']
+        obj_data['gscosmos_sep_arcsec'] = cat['gscosmos_sep_arcsec']
+
+        obj_data['box_size_arcsec'] = cat['box_size_arcsec']
+    """
 
     def _make_resized_data(self, odata):
         """
@@ -406,63 +495,67 @@ class CosmosMEDSMaker(meds.MEDSMaker):
             new_nmax,
             extra_fields=self._get_fields(new_nmax),
         )
-
-        tmpst = meds.util.get_meds_output_struct(1, new_nmax)
-        required_fields = tmpst.dtype.names
+        new_data = self._add_cat_fields(new_data, copy=False)
 
         for name in new_data.dtype.names:
             if name in temp_obj_data.dtype.names:
 
                 shape = new_data[name].shape
                 lshape = len(shape)
-                #if lshape > 1 and name in required_fields:
-                #    new_data[name][:,:] = temp_obj_data[name][:,0:new_nmax]
-                #else:
-                #    new_data[name][:] = temp_obj_data[name][:]
+
                 if lshape > 1 and shape[1] == new_nmax:
                     new_data[name][:,:] = temp_obj_data[name][:,0:new_nmax]
                 else:
                     new_data[name][:] = temp_obj_data[name][:]
 
-
         del temp_obj_data
 
         return new_data
-
-
-    def _get_iso_radius(self, cat):
-        iso_area = cat[self['isoarea_name']].clip(min=1)
-        return np.sqrt(iso_area/np.pi)
 
     def _get_extra_fields(self, obj_data, nmax):
         return []
 
     def _get_fields(self, ncut):
         return [
-            ('number','i8'),
-            ('flags','i4'),
-            ('iso_radius','f4'),
-            ('flux','f4'),
-            ('flux_err','f4'),
+            #('number','i8'),
+            #('flags','i4'),
+            #('iso_radius','f4'),
+            #('flux','f4'),
+            #('flux_err','f4'),
             ('input_row','f8'),
             ('input_col','f8'),
-            ('gscosmos_index','i8'),
-            ('gscosmos_sep_arcsec','f8'),
+            #('gscosmos_index','i8'),
+            #('gscosmos_sep_arcsec','f8'),
             ('psf_row_size','i4',ncut),
             ('psf_col_size','i4',ncut),
             ('psf_cutout_row','f8',ncut),
             ('psf_cutout_col','f8',ncut),
             ('psf_start_row','i8',ncut),
+            #('box_size_arcsec','f4'),
         ]
 
 
-    def _get_box_sizes(self, cat):
+    def _get_box_sizes(self, image_info, cat):
         """
         get box sizes that are wither 2**N or 3*2**N, within
         the limits set by the user
         """
 
-        box_size = self._get_sigma_size(cat)
+
+        file_id=0
+        impath=image_info['image_path'][file_id].strip()
+        ext=image_info['image_ext'][file_id]
+        wcs_data = fitsio.read_header(impath, ext=ext)
+        wcs = eu.wcsutil.WCS(wcs_data)
+
+
+        jacob = wcs.get_jacobian(100,100)
+        dudcol, dudrow, dvdcol, dvdrow = jacob
+
+        det = dvdrow*dudcol - dvdcol*dudrow
+        pixel_scale = np.sqrt(abs(det))
+        print('found pixel scale:',pixel_scale)
+        box_size = cat['box_size_arcsec']/pixel_scale
 
         # clip to range
         box_size.clip(
@@ -477,40 +570,21 @@ class CosmosMEDSMaker(meds.MEDSMaker):
             box_size[w] += 1
 
         return box_size
-    
-    """
-        # now put in fft sizes
-        bins = [0]
-
-        bins.extend([sze for sze in self['allowed_box_sizes'] 
-                     if sze >= self['min_box_size']
-                     and sze <= self['max_box_size']])
-
-        if bins[-1] != self['max_box_size']:
-            bins.append(self['max_box_size'])
-
-        bin_inds = np.digitize(box_size,bins,right=True)
-        bins = np.array(bins)
-
-        return bins[bin_inds]
-    """
-
-    def _get_sigma_size(self, cat):
-        """
-        "sigma" size, based on flux radius.  There are no ellip
-        parameters in catalog
-        """
-
-        # note taking element 1 which is half light radius
-        sigma = cat['flux_radius'][:,1]*2.0/FWHM_FAC
-        drad = sigma*self['sigma_fac']
-        drad = np.ceil(drad)
-        sigma_size = 2*drad.astype('i4') # sigma size is twice the radius
-
-        return sigma_size
-
 
     def _make_image_info(self, flistname):
+        survey=self['survey'].lower()
+
+        if survey=='cosmos':
+            image_info = self._make_image_info_hst(flistname)
+        elif survey=='des':
+            image_info = self._make_image_info_des(flistname)
+            self._set_psfex_objects(image_info)
+        else:
+            raise ValueError('bad survey: %s' % self['survey'])
+
+        return image_info
+
+    def _make_image_info_hst(self, flistname):
         """
         won't load any data yet because the files are gzipped and just reading
         the header takes 2.6 G and a long time!
@@ -544,11 +618,63 @@ class CosmosMEDSMaker(meds.MEDSMaker):
         image_info['weight_ext'] = self['weight_ext']
 
         for i,f in enumerate(flist):
-            image_info['image_id'] = i
-            image_info['image_path'] = f
-            image_info['weight_path'] = f.replace('sci.fits','wht.fits')
+            image_info['image_id'][i] = i
+            image_info['image_path'][i] = f
+            image_info['weight_path'][i] = f.replace('sci.fits','wht.fits')
 
         return image_info
+
+    def _make_image_info_des(self, flistname):
+        """
+        won't load any data yet because the files are gzipped and just reading
+        the header takes 2.6 G and a long time!
+
+        This means we need to set magzp and scale later when we read
+        """
+
+        flist=[]
+        psfex_flist=[]
+        with open(flistname) as fobj:
+            for line in fobj:
+                fname = line.strip()
+                flist.append(fname)
+
+                psfex_fname = fname.replace('.fits.fz','_psfcat.psf')
+                psfex_flist.append(psfex_fname)
+
+        nimage = len(flist)
+
+        path_len = max([len(f) for f in flist])
+        psfex_path_len = max([len(f) for f in psfex_flist])
+
+        try:
+            ext_len = len(self['image_ext'])
+        except:
+            ext_len=None
+
+        extra_dtype = [
+            ('psfex_path','U%d' % psfex_path_len),
+        ]
+
+        #image_info = meds.util.get_image_info_struct(
+        image_info = get_image_info_struct(
+            nimage,
+            path_len,
+            ext_len=ext_len,
+            extra_dtype=extra_dtype,
+        )
+        image_info['position_offset'] = 1
+        image_info['image_ext'] = self['image_ext']
+        image_info['weight_ext'] = self['weight_ext']
+
+        for i,f in enumerate(flist):
+            image_info['image_id'][i] = i
+            image_info['image_path'][i] = f
+            image_info['weight_path'][i] = f
+            image_info['psfex_path'][i] = psfex_flist[i]
+
+        return image_info
+
 
     def _setup_fpack(self):
         # -qz 4.0 instead of -q 4.0

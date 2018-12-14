@@ -11,60 +11,42 @@ parser.add_argument('cat_path')
 parser.add_argument('output_path')
 parser.add_argument('plot_path')
 
-parser.add_argument('--maxrad',default=0.2,help='max match radius in degrees')
-parser.add_argument('--show',action='store_true')
-
-
-def read_cat(fname):
-    cols=[
-        'number',
-        'flags',
-        'alpha_j2000',
-        'delta_j2000',
-        'x_image',
-        'y_image',
-        'isoarea_image',
-        'flux_auto',
-        'fluxerr_auto',
-        'flux_radius',
-
-        # only used for cuts
-        'mu_class',
-        'mask',
-    ]
-
-    print('reading:',fname)
-    data = fitsio.read(
-        fname,
-        #rows=list(range(10000)),
-        columns=cols,
-        lower=True,
-    )
-
-    add_dt = [('id','i8')]
-    new_data = eu.numpy_util.add_fields(data, add_dt)
-    new_data['id'] = np.arange(new_data.size)
-    return new_data
+parser.add_argument(
+    '--maxrad',
+    type=float,
+    default=0.2,
+    help='max match radius in degrees',
+)
+parser.add_argument(
+    '--sigma-fac',
+    type=float,
+    default=6.0,
+    help='box size is sigma_fac*flux_radius*pixscale/FWHM_FAC',
+)
+parser.add_argument(
+    '--show',
+    action='store_true',
+)
 
 def main():
     args=parser.parse_args()
 
-    cat = read_cat(args.cat_path)
-
-    matcher = medscosmos.hst_psfs.HSTPSFMatcher(
-        cat,
+    maker = medscosmos.catmaker.CatMaker(
+        args.cat_path,
+        args.sigma_fac,
         args.maxrad,
     )
-    matcher.match_catalogs()
-
-    newcat = matcher.get_catalog_with_matches()
+    cat = maker.get_cat()
+    plt = maker.get_plot()
     
     print('writing:',args.output_path)
-    fitsio.write(args.output_path, newcat, clobber=True)
+    fitsio.write(args.output_path, cat, clobber=True)
 
-    plt=matcher.doplot(show=args.show)
     print('writing plot:',args.plot_path)
     plt.write(args.plot_path, dpi=300)
+
+    if args.show:
+        plt.show()
 
 if __name__=='__main__':
     main()
