@@ -90,12 +90,17 @@ def read_original_cat(fname):
         'delta_j2000',
         'x_image',
         'y_image',
+        'mag_iso',
         'isoarea_image',
+        'mag_auto',
         'flux_auto',
         'fluxerr_auto',
         'flux_radius',
 
         # only used for cuts
+        'unique',
+        'nearstar',
+        'masked',
         'mu_class',
         'mask',
     ]
@@ -106,7 +111,18 @@ def read_original_cat(fname):
         columns=cols,
         lower=True,
     )
-    #data=data[0:100]
+
+    # clean with blends
+    w , = np.where(
+        (data['unique'] == 1)
+        & (data['nearstar'] == 1)
+        & (data['masked'] == 1)
+        & (data['mu_class'] < 3)
+        & (data['mask'] == 0)
+        & (data['mag_iso'] < 26.5)
+    )
+    print('after cuts %d/%d %g%%' % (w.size,data.size,w.size/data.size*100))
+    data=data[w]
 
     newnames=[]
     for name in data.dtype.names:

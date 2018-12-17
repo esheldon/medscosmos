@@ -378,11 +378,12 @@ class CosmosMEDSMaker(meds.MEDSMaker):
                 ext=1
             cat = fits[ext][:]
 
+        # one cut here based on if we matched to the galsim cat
         w, = np.where(
-            (cat['mu_class'] < 3)
-            &
-            (cat['mask']==0)
-            &
+            #(cat['mu_class'] < 3)
+            #&
+            #(cat['mask']==0)
+            #&
             (cat['gscosmos_index'] >= 0)
         )
         print('initial cuts %d/%d %g%%' % (w.size,cat.size,w.size/cat.size*100))
