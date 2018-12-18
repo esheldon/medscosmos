@@ -1,19 +1,19 @@
 """
 TODO:
 
+    - maybe just do matches to smaller radius with galsim cat
+        - might remove more junk?
+        - won't remove dups
+    - use iso area for stamp size?
     - zero points
         cosmos is 25.93647860706682
         Note we will need to convert our flux_auto (for guesses) to the new
         zero point if we rescale
-    - move cuts into catmaker
+    - force to common zero point
     - use clean not clean only and apply cuts eric sent
     clean_withblends = (cosmos[‘unique’] == 1) & (cosmos[‘nearstar’] == 1) & (cosmos[‘masked’]==1)
-    - put in iso_radius
-    - make MEDS box size stuff pre-calculated in arcsec
-    - we hope the min box size will make this OK for the DES data too
-    - force to common zero point
-    - limit to 1024 postage stamp (min 32)
-    - just make stamp sizes even, don't pick particular ones
+
+    - dups are serious issue
 
     - implement fake seg map?
         - just a circle outside of iso_radius
