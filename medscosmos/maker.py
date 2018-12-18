@@ -45,6 +45,7 @@ class CosmosMEDSMaker(meds.MEDSMaker):
         
         self.cat_orig = self._read_catalog(catname)
         obj_data = self._make_obj_data(image_info)
+        meta_data = self._get_meta_data()
 
         self._setup_fpack()
 
@@ -55,6 +56,7 @@ class CosmosMEDSMaker(meds.MEDSMaker):
             obj_data,
             image_info,
             config=config,
+            meta_data=meta_data,
             **kw
         )
 
@@ -589,6 +591,14 @@ class CosmosMEDSMaker(meds.MEDSMaker):
 
         return image_info
 
+    def _get_meta_data(self):
+        dt=[
+            ('magzp_ref','f8'),
+        ]
+        meta=np.zeros(1, dtype=dt)
+        meta['magzp_ref'] = self['magzp_ref']
+        return meta
+
     def _make_image_info_hst(self, flistname):
         """
         won't load any data yet because the files are gzipped and just reading
@@ -598,10 +608,17 @@ class CosmosMEDSMaker(meds.MEDSMaker):
         """
 
         flist=[]
+        magzp_list=[]
         with open(flistname) as fobj:
             for line in fobj:
-                fname=line.strip()
+                ls = line.split()
+                fname = ls[0]
+                magzp = float(ls[1])
+                #fname=line.strip()
                 flist.append(fname)
+                magzp_list.append(magzp)
+
+        magzp = np.array(magzp_list)
 
         nimage = len(flist)
 
@@ -627,6 +644,8 @@ class CosmosMEDSMaker(meds.MEDSMaker):
             image_info['image_path'][i] = f
             image_info['weight_path'][i] = f.replace('sci.fits','wht.fits')
 
+        image_info['magzp'] = magzp
+        image_info['scale'] = self._get_scale_from_magzp(magzp)
         return image_info
 
     def _make_image_info_des(self, flistname):
@@ -639,15 +658,21 @@ class CosmosMEDSMaker(meds.MEDSMaker):
 
         flist=[]
         psfex_flist=[]
+        magzp_list=[]
         with open(flistname) as fobj:
             for line in fobj:
-                fname = line.strip()
+                ls = line.split()
+                fname = ls[0]
+                magzp = float(ls[1])
+                magzp_list.append(magzp)
+
                 flist.append(fname)
 
                 psfex_fname = fname.replace('.fits.fz','_psfcat.psf')
                 psfex_flist.append(psfex_fname)
 
         nimage = len(flist)
+        magzp = np.array(magzp_list)
 
         path_len = max([len(f) for f in flist])
         psfex_path_len = max([len(f) for f in psfex_flist])
@@ -678,7 +703,17 @@ class CosmosMEDSMaker(meds.MEDSMaker):
             image_info['weight_path'][i] = f
             image_info['psfex_path'][i] = psfex_flist[i]
 
+        image_info['magzp'] = magzp
+        image_info['scale'] = self._get_scale_from_magzp(magzp)
         return image_info
+
+    def _get_scale_from_magzp(self, magzp):
+        """
+        get the scale factor required to put the image on the
+        reference zero point
+        """
+        scale = 10.0**( 0.4*(self['magzp_ref']-magzp) )
+        return scale
 
 
     def _setup_fpack(self):
