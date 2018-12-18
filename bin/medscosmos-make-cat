@@ -14,7 +14,7 @@ parser.add_argument('plot_path')
 parser.add_argument(
     '--maxrad',
     type=float,
-    default=0.2,
+    default=10.0/3600.0,
     help='max match radius in degrees',
 )
 parser.add_argument(
