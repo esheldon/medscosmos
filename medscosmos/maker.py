@@ -1,22 +1,7 @@
 """
 TODO:
 
-    - maybe just do matches to smaller radius with galsim cat
-        - might remove more junk?
-        - won't remove dups
-    - use iso area for stamp size?
-    - zero points
-        cosmos is 25.93647860706682
-        Note we will need to convert our flux_auto (for guesses) to the new
-        zero point if we rescale
-    - force to common zero point
-    - use clean not clean only and apply cuts eric sent
-    clean_withblends = (cosmos[‘unique’] == 1) & (cosmos[‘nearstar’] == 1) & (cosmos[‘masked’]==1)
-
-    - dups are serious issue
-
-    - implement fake seg map?
-        - just a circle outside of iso_radius
+    - better fake seg map (actually just zeroing weights)
 
 """
 import os
@@ -33,6 +18,47 @@ from .files import (
     StagedOutFile,
 )
 
+def make_all_cosmos_des(run, cosmos_config, des_config, catfile, tileid):
+    """
+    make the cosmos and DES meds files
+
+    Parameters
+    ----------
+    run: string
+        run identifier
+    cosmos_config: string
+        path to the cosmos meds config
+    des_config: string
+        path to the des meds config
+    catfile: string
+        path to the matched catalog
+    tileid: int
+        tile id to process
+    """
+
+    flist = files.get_cosmos_flist(tileid)
+    cosmos_meds = files.get_meds_file(run, tileid, 'cosmos','i')
+
+    print('making cosmos MEDS:',cosmos_meds)
+    maker = CosmosMEDSMaker(
+        config_path=cosmos_config,
+        catname=catfile,
+        flistname=flist,
+    )
+    maker.write(cosmos_meds)
+
+    for band in ['u','g','r','i','z']:
+
+        band_flist = files.get_des_flist(band)
+        band_meds = files.get_meds_file(run, tileid, 'des',band)
+
+        print('making DES MEDS:',band_meds)
+        maker = CosmosMEDSMaker(
+            config_path=des_config,
+            catname=cosmos_meds,
+            flistname=band_flist,
+        )
+        maker.write(band_meds)
 
 
 class CosmosMEDSMaker(meds.MEDSMaker):

@@ -4,6 +4,202 @@ import shutil
 import tarfile
 import yaml
 import tempfile
+from glob import glob
+
+def get_cosmos_dir():
+    """
+    base cosmos directory
+    """
+    return os.environ['COSMOS_DIR']
+
+def get_meds_dir():
+    """
+    get the base MEDS_DIR
+    """
+    return os.path.join(
+        get_cosmos_dir(),
+        'meds',
+    )
+
+def get_meds_run_dir(run):
+    """
+    get the directory for the given run
+
+    Parameters
+    ----------
+    run: string
+        e.g. cosmos-des01
+    """
+    md=get_meds_dir()
+    return os.path.join(
+        md,
+        run,
+    )
+
+def get_script_dir(run):
+    """
+    get the directory for the given run scripts
+
+    Parameters
+    ----------
+    run: string
+        e.g. cosmos-des01
+    """
+
+    md=get_meds_dir()
+    return os.path.join(
+        md,
+        run,
+        'scripts',
+    )
+
+def get_script_file(run, tileid):
+    """
+    get the directory for the given run scripts
+
+    Parameters
+    ----------
+    run: string
+        e.g. cosmos-des01
+    """
+
+    d=get_script_dir(run)
+    tilestr = get_tilestr(tileid)
+    fname='make-%s.sh' % tilestr
+
+    return os.path.join(
+        d,
+        fname,
+    )
+
+
+
+def get_tilestr(tileid):
+    """
+    get zero padded tile string
+
+    Parameters
+    ----------
+    tileid: int or string
+        e.g. 35 or '035'
+    """
+    tileid=int(tileid)
+    return '%03d' % tileid
+
+def get_meds_file_dir(run, tileid):
+    """
+    get the directory for the given tile
+
+    Parameters
+    ----------
+    run: string
+        e.g. cosmos-des01
+    tileid: int
+        e.g. 35
+    """
+
+    tilestr = get_tilestr(tileid)
+    run_dir=get_meds_run_dir(run)
+    return os.path.join(
+        run_dir,
+        tilestr,
+    )
+
+def get_meds_file(run, tileid, survey, band):
+    """
+    get the directory for the given tile
+
+    Parameters
+    ----------
+    run: string
+        e.g. cosmos-des01
+    tileid: int
+        e.g. 35
+    survey: string
+        e.g. cosmos or des
+    band: string
+        band string such as 'g'
+    """
+    d = get_meds_file_dir(run, tileid)
+
+    tilestr = get_tilestr(tileid)
+    fname = 'meds-%(run)s-%(tilestr)s-%(survey)s-%(band)s.fits.fz'
+    fname = fname % {
+        'run':run,
+        'tilestr':tilestr,
+        'survey':survey,
+        'band':band,
+    }
+
+    return os.path.join(
+        d,
+        fname,
+    )
+
+
+def get_flist_dir():
+    """
+    get directory holding file lists
+    """
+    return os.path.join(
+        get_cosmos_dir(),
+        'flists',
+    )
+
+def get_cosmos_flist(tileid):
+    """
+    get the cosmos coadd file list
+
+    Parameters
+    ----------
+    tileid: int
+        e.g. 35
+    """
+    tilestr = get_tilestr(tileid)
+    fname='cosmos-flist%s.dat' % tilestr
+    return os.path.join(
+        get_flist_dir(),
+        fname,
+    )
+
+def get_cosmos_flists():
+    """
+    get all the cosmos coadd file lists
+    """
+    d = get_flist_dir()
+    fl = glob(d+'/cosmos-flist[0-9][0-9][0-9].dat')
+    fl.sort()
+    return fl
+
+def get_cosmos_tileids():
+    """
+    get all the cosmos coadd tile ids
+    """
+    fl = get_cosmos_flists()
+    ids = []
+
+    for f in fl:
+        bname = os.path.basename(f)
+        tileid = int( bname[-7:].replace('.dat','') ) 
+        ids.append(tileid)
+
+    return ids
+
+def get_des_flist(band):
+    """
+    get the cosmos coadd file list
+
+    Parameters
+    ----------
+    band: string
+        e.g. 'i'
+    """
+    fname='cosmos-flist-des-%s.dat' % band
+    return os.path.join(
+        get_flist_dir(),
+        fname,
+    )
+
 
 class StagedInFile(object):
     """
@@ -286,209 +482,6 @@ def read_yaml(fname):
     return data
 
 
-#
-# specific for the desdm version
-#
-
-def get_desdm_file_config(medsconf, tilename, band):
-    """
-    the desdm version needs a file config
-
-    parameters
-    ----------
-    medsconf: string
-        A name for the meds version or config.  e.g. '013'
-        or 'y3a1-v02'
-    tilename: string
-        e.g. 'DES0417-5914'
-    band: string
-        e.g. 'i'
-    """
-
-    type='fileconf'
-    ext='yaml'
-    subdir='lists-%s' % band
-
-    return get_meds_datafile_generic(
-        medsconf,
-        tilename,
-        band,
-        type,
-        ext,
-        subdir=subdir,
-    )
-
-def get_desdm_finalcut_flist(medsconf, tilename, band):
-    """
-    the desdm version needs a list
-
-    parameters
-    ----------
-    medsconf: string
-        A name for the meds version or config.  e.g. '013'
-        or 'y3a1-v02'
-    tilename: string
-        e.g. 'DES0417-5914'
-    band: string
-        e.g. 'i'
-    """
-
-    type='finalcut-flist'
-    ext='dat'
-    subdir='lists-%s' % band
-
-    return get_meds_datafile_generic(
-        medsconf,
-        tilename,
-        band,
-        type,
-        ext,
-        subdir=subdir,
-    )
-
-
-def get_desdm_nullwt_flist(medsconf, tilename, band):
-    """
-    the desdm version needs a list
-
-    parameters
-    ----------
-    medsconf: string
-        A name for the meds version or config.  e.g. '013'
-        or 'y3a1-v02'
-    tilename: string
-        e.g. 'DES0417-5914'
-    band: string
-        e.g. 'i'
-    """
-
-    type='nullwt-flist'
-    ext='dat'
-    subdir='lists-%s' % band
-
-    return get_meds_datafile_generic(
-        medsconf,
-        tilename,
-        band,
-        type,
-        ext,
-        subdir=subdir,
-    )
-
-def get_coaddinfo_file(medsconf, tilename, band):
-    """
-    the desdm version needs a list
-
-    parameters
-    ----------
-    medsconf: string
-        A name for the meds version or config.  e.g. '013'
-        or 'y3a1-v02'
-    tilename: string
-        e.g. 'DES0417-5914'
-    band: string
-        e.g. 'i'
-    """
-
-    type='coaddinfo'
-    ext='yaml'
-    subdir='lists-%s' % band
-
-    return get_meds_datafile_generic(
-        medsconf,
-        tilename,
-        band,
-        type,
-        ext,
-        subdir=subdir,
-    )
-
-
-def get_desdm_seg_flist(medsconf, tilename, band):
-    """
-    the desdm version needs a list
-
-    parameters
-    ----------
-    medsconf: string
-        A name for the meds version or config.  e.g. '013'
-        or 'y3a1-v02'
-    tilename: string
-        e.g. 'DES0417-5914'
-    band: string
-        e.g. 'i'
-    """
-
-    type='seg-flist'
-    ext='dat'
-    subdir='lists-%s' % band
-
-    return get_meds_datafile_generic(
-        medsconf,
-        tilename,
-        band,
-        type,
-        ext,
-        subdir=subdir,
-    )
-
-
-def get_desdm_bkg_flist(medsconf, tilename, band):
-    """
-    the desdm version needs a list
-
-    parameters
-    ----------
-    medsconf: string
-        A name for the meds version or config.  e.g. '013'
-        or 'y3a1-v02'
-    tilename: string
-        e.g. 'DES0417-5914'
-    band: string
-        e.g. 'i'
-    """
-
-    type='bkg-flist'
-    ext='dat'
-    subdir='lists-%s' % band
-
-    return get_meds_datafile_generic(
-        medsconf,
-        tilename,
-        band,
-        type,
-        ext,
-        subdir=subdir,
-    )
-
-
-def get_desdm_objmap(medsconf, tilename, band):
-    """
-    the desdm version needs a map
-
-    parameters
-    ----------
-    medsconf: string
-        A name for the meds version or config.  e.g. '013'
-        or 'y3a1-v02'
-    tilename: string
-        e.g. 'DES0417-5914'
-    band: string
-        e.g. 'i'
-    """
-
-    type='objmap'
-    ext='fits'
-    subdir='lists-%s' % band
-
-    return get_meds_datafile_generic(
-        medsconf,
-        tilename,
-        band,
-        type,
-        ext,
-        subdir=subdir,
-    )
 
 def try_remove_timeout(fname, ntry=2, sleep_time=2):
     import time
