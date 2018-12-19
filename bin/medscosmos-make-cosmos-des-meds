@@ -1,0 +1,27 @@
+#!/usr/bin/env python
+
+import medscosmos
+import argparse
+
+parser=argparse.ArgumentParser()
+parser.add_argument('run')
+parser.add_argument('cosmos_config')
+parser.add_argument('des_config')
+parser.add_argument('cat')
+parser.add_argument('tileid',type=int)
+
+def main():
+    args=parser.parse_args()
+
+
+    medscosmos.maker.make_all_cosmos_des(
+        args.run,
+        args.cosmos_config,
+        args.des_config,
+        args.cat,
+        args.tileid,
+    )
+
+if __name__=='__main__':
+    main()
+ 

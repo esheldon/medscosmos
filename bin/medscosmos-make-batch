@@ -1,0 +1,23 @@
+#!/usr/bin/env python
+
+import medscosmos
+import argparse
+
+parser=argparse.ArgumentParser()
+
+parser.add_argument('system')
+parser.add_argument('run')
+parser.add_argument('cosmos_config_file')
+parser.add_argument('des_config_file')
+parser.add_argument('cat_file',help='matched catalog from medscosmos-make-cat')
+
+def main():
+    args=parser.parse_args()
+
+    if system=='shell':
+        maker = medscosmos.batch.BatchMakerShell(args)
+    maker.go()
+
+if __name__=='__main__':
+    main()
+ 
