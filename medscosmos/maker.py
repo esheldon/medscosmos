@@ -97,9 +97,18 @@ class CosmosMEDSMaker(meds.MEDSMaker):
         """
         assert filename[-3:]=='.fz','name must end in .fz'
 
-        ucfilename = filename[0:-3]
+        files.makedir_fromfile(filename)
 
-        with TempFile(ucfilename) as tfile:
+        ucfilename=filename[0:-3]
+        bname = os.path.basename(ucfilename)
+
+        tmp_path = os.path.join(
+            files.get_temp_dir(),
+            bname,
+        )
+        files.makedir_fromfile(tmp_path)
+
+        with TempFile(tmp_path) as tfile:
             super(CosmosMEDSMaker,self).write(tfile.path)
             self._compress_meds_file(tfile.path, filename)
 
