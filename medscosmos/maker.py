@@ -200,9 +200,14 @@ class CosmosMEDSMaker(meds.MEDSMaker):
             # increment
             self.obj_data['ncutout'][q] += 1
 
+        w,=np.where(self.obj_data['ncutout'] > 0)
+        print('%d/%d had ncut > 0' % (w.size, self.obj_data.size))
+        #self.obj_data = self.obj_data[w]
+
         self.obj_data = self._make_resized_data(self.obj_data)
         print('setting number field as sequential')
         self.obj_data['number'] = 1+np.arange(self.obj_data.size)
+
 
         self._set_start_rows_and_pixel_count()
 
@@ -242,48 +247,46 @@ class CosmosMEDSMaker(meds.MEDSMaker):
 
         cutout_hdu = self.fits['psf']
 
-        for file_id in range(nfile):
+        for iobj in range(nobj):
+            if (iobj+1) % 100 == 0:
+                print('    %d/%d' % (iobj+1,obj_data.size))
 
-            for iobj in range(nobj):
-                if (iobj+1) % 100 == 0:
-                    print('    %d/%d' % (iobj+1,obj_data.size))
+            # HST psf is same for every cutout, in fact ncut should always
+            # be 1
+            try:
+                psf_im = self.psf_data.get_psf(iobj)
+            except AttributeError:
+                psf_im = None
 
-                # HST psf is same for every cutout, in fact ncut should always
-                # be 1
-                try:
-                    psf_im = self.psf_data.get_psf(iobj)
-                except AttributeError:
-                    psf_im = None
+            ncut=obj_data['ncutout'][iobj]
 
-                ncut=obj_data['ncutout'][iobj]
+            for icut in range(ncut):
 
-                for icut in range(ncut):
-
-                    if psf_im is None:
-                        row = obj_data['orig_row'][iobj, icut]
-                        col = obj_data['orig_col'][iobj, icut]
-                        file_id = obj_data['file_id'][iobj,icut]
-
-                        p = self.psf_data[file_id]
-
-                        psf_im = p.get_rec(row,col)
-
-                    expected_psf_shape = (
-                        obj_data['psf_row_size'][iobj,icut],
-                        obj_data['psf_col_size'][iobj,icut],
-                    )
-
-                    file_id = obj_data['file_id'][iobj, icut]
-
+                if psf_im is None:
                     row = obj_data['orig_row'][iobj, icut]
                     col = obj_data['orig_col'][iobj, icut]
-                    start_row = obj_data['psf_start_row'][iobj, icut]
+                    file_id = obj_data['file_id'][iobj,icut]
 
-                    if psf_im.shape != expected_psf_shape:
-                        raise ValueError("psf size mismatch, expected %s "
-                                         "got %s" % (expected_psf_shape, psf_im.shape))
+                    p = self.psf_data[file_id]
 
-                    cutout_hdu.write(psf_im, start=start_row)
+                    psf_im = p.get_rec(row,col)
+
+                expected_psf_shape = (
+                    obj_data['psf_row_size'][iobj,icut],
+                    obj_data['psf_col_size'][iobj,icut],
+                )
+
+                file_id = obj_data['file_id'][iobj, icut]
+
+                row = obj_data['orig_row'][iobj, icut]
+                col = obj_data['orig_col'][iobj, icut]
+                start_row = obj_data['psf_start_row'][iobj, icut]
+
+                if psf_im.shape != expected_psf_shape:
+                    raise ValueError("psf size mismatch, expected %s "
+                                     "got %s" % (expected_psf_shape, psf_im.shape))
+
+                cutout_hdu.write(psf_im, start=start_row)
 
 
     def _set_psf_layout_hst(self):
@@ -300,15 +303,14 @@ class CosmosMEDSMaker(meds.MEDSMaker):
         for iobj in range(obj_data.size):
             if (iobj+1) % 100 == 0:
                 print('    %d/%d' % (iobj+1,obj_data.size))
+
             # note assuming same psf for all "epochs"
-            # we would only have extra epoch to fake it
             psf_im = self.psf_data.get_psf(iobj)
 
             psf_shape = psf_im.shape
             psf_npix = psf_im.size
 
-            box_size = max(psf_shape)
-            cen = (np.array([box_size]*2)-1.0)/2.0
+            cen = (np.array(psf_shape)-1.0)/2.0
 
             # we will expand the psfs
 
