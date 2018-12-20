@@ -256,7 +256,6 @@ class StagedInFile(object):
         """
         make a local copy of the file
         """
-        import shutil
 
         if self._stage_in:
             if not os.path.exists(self.original_path):
@@ -360,7 +359,6 @@ class StagedOutFile(object):
         with StagedOutFile(fname,tmpdir=tmpdir) as sf:
             #do something
         """
-        import shutil
 
         if self.is_temp and not self.was_staged_out:
             if not os.path.exists(self.path):
@@ -416,7 +414,6 @@ class TempFile(object):
         """
         remove the file if it exists, if not already cleaned up
         """
-        import shutil
 
         if not self.was_cleaned_up:
             if os.path.exists(self.path):
