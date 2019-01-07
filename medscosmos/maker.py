@@ -623,6 +623,9 @@ class CosmosMEDSMaker(meds.MEDSMaker):
         elif survey=='des':
             image_info = self._make_image_info_des(flistname)
             self._set_psfex_objects(image_info)
+        elif survey=='vista':
+            image_info = self._make_image_info_vista(flistname)
+            #self._set_psfex_objects(image_info)
         else:
             raise ValueError('bad survey: %s' % self['survey'])
 
@@ -743,6 +746,67 @@ class CosmosMEDSMaker(meds.MEDSMaker):
         image_info['magzp'] = magzp
         image_info['scale'] = self._get_scale_from_magzp(magzp)
         return image_info
+
+    def _make_image_info_vista(self, flistname):
+
+        flist=[]
+        weight_flist=[]
+        psfex_flist=[]
+        magzp_list=[]
+        with open(flistname) as fobj:
+            for line in fobj:
+                ls = line.split()
+                fname = ls[0]
+                magzp = float(ls[1])
+                magzp_list.append(magzp)
+
+                flist.append(fname)
+
+                weight_fname = fname.replace('.fits','.weight.fits')
+                weight_flist.append(weight_fname)
+
+                psfex_fname = fname.replace('.fits','_psfcat.psf')
+                psfex_flist.append(psfex_fname)
+
+        nimage = len(flist)
+        magzp = np.array(magzp_list)
+
+        path_len = max([len(f) for f in flist])
+        weight_path_len = max([len(f) for f in weight_flist])
+
+        path_len = max(path_len, weight_path_len)
+        psfex_path_len = max([len(f) for f in psfex_flist])
+
+        try:
+            ext_len = len(self['image_ext'])
+        except:
+            ext_len=None
+
+        extra_dtype = [
+            ('psfex_path','U%d' % psfex_path_len),
+        ]
+
+        #image_info = meds.util.get_image_info_struct(
+        image_info = get_image_info_struct(
+            nimage,
+            path_len,
+            ext_len=ext_len,
+            extra_dtype=extra_dtype,
+        )
+        image_info['position_offset'] = 1
+        image_info['image_ext'] = self['image_ext']
+        image_info['weight_ext'] = self['weight_ext']
+
+        for i,f in enumerate(flist):
+            image_info['image_id'][i] = i
+            image_info['image_path'][i] = f
+            image_info['weight_path'][i] = weight_flist[i]
+            image_info['psfex_path'][i] = psfex_flist[i]
+
+        image_info['magzp'] = magzp
+        image_info['scale'] = self._get_scale_from_magzp(magzp)
+        return image_info
+
 
     def _get_scale_from_magzp(self, magzp):
         """
