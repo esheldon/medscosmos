@@ -625,7 +625,7 @@ class CosmosMEDSMaker(meds.MEDSMaker):
             self._set_psfex_objects(image_info)
         elif survey=='vista':
             image_info = self._make_image_info_vista(flistname)
-            #self._set_psfex_objects(image_info)
+            self._set_psfex_objects(image_info)
         else:
             raise ValueError('bad survey: %s' % self['survey'])
 
